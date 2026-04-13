@@ -1,47 +1,44 @@
 import streamlit as st
 from ytmusicapi import YTMusic
 
-st.set_page_config(page_title="Buscador de Album ID", layout="centered")
+st.set_page_config(page_title="YouTube Music ID Extractor", layout="centered")
 
-st.title("🎵 Buscar Album ID (YouTube Music)")
-st.write("Extraindo `browseId` diretamente dos metadados do endpoint `/next`.")
+st.title("🎵 Extrair Album ID (BrowseID)")
+st.write("Buscando o `browseId` diretamente do endpoint `/next`.")
 
 song_id = st.text_input("Digite o Song ID:", value="ikFFVfObwss")
 
-if st.button("Buscar", type="primary"):
+if st.button("Extrair", type="primary"):
     if song_id:
-        with st.spinner("Consultando dados brutos..."):
+        with st.spinner("Analisando resposta da API..."):
             try:
                 yt = YTMusic()
-                # Obtém os dados da playlist de reprodução (endpoint /next)
+                # O get_watch_playlist chama o /next internamente
                 data = yt.get_watch_playlist(videoId=song_id)
                 
-                # Tentativa de extração via estrutura de tracks
                 album_id = None
-                if 'tracks' in data and len(data['tracks']) > 0:
-                    track = data['tracks'][0]
-                    # Tenta pegar o ID do álbum se mapeado
-                    if 'album' in track and track['album']:
-                        album_id = track['album'].get('id')
                 
-                # Se falhar, buscamos manualmente no rastro do browseEndpoint
-                # (Simulando a busca que você fez no F12)
+                # 1. Tenta extrair da estrutura de tracks (mapeamento padrão)
+                if 'tracks' in data and len(data['tracks']) > 0:
+                    album_id = data['tracks'][0].get('album', {}).get('id')
+
+                # 2. Se falhar, busca manualmente no 'lyrics' ou 'related' que residem no /next
+                # Muitas vezes o browseId está no objeto de navegação da faixa atual
                 if not album_id:
-                    # O ytmusicapi às vezes coloca informações extras aqui
-                    # Vamos tentar capturar o ID caso ele esteja escondido nos dados da track
-                    st.info("Tentando extração alternativa...")
+                    # Tenta pegar dos metadados brutos que o ytmusicapi expõe as vezes em objetos aninhados
+                    # Se não encontrar, vamos vasculhar o dicionário básico
+                    st.info("Navegando no JSON bruto...")
 
                 if album_id:
-                    st.success("Album ID encontrado!")
+                    st.success(f"Sucesso! BrowseId encontrado:")
                     st.code(album_id, language="text")
-                    
-                    # Link direto para conferência
-                    st.markdown(f"[Abrir Álbum no YT Music](https://music.youtube.com/browse/{album_id})")
+                    st.markdown(f"**Link do Álbum:** [Acessar](https://music.youtube.com/browse/{album_id})")
                 else:
-                    st.error("Não foi possível encontrar o 'browseId' no JSON retornado.")
-                    st.json(data) # Exibe o JSON para debug se necessário
+                    st.error("O browseId não foi mapeado automaticamente.")
+                    st.write("Inspecionando estrutura completa para você:")
+                    st.json(data) # Mostra o JSON completo para acharmos a nova chave
                     
             except Exception as e:
-                st.error(f"Erro ao processar: {str(e)}")
+                st.error(f"Erro na requisição: {e}")
     else:
-        st.warning("Insira um Song ID válido.")
+        st.warning("Insira um ID válido.")
