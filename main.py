@@ -1,44 +1,55 @@
 import streamlit as st
 from ytmusicapi import YTMusic
 
-st.set_page_config(page_title="YouTube Music ID Extractor", layout="centered")
+st.set_page_config(page_title="YTMusic Deep Extractor", layout="centered")
 
-st.title("🎵 Extrair Album ID (BrowseID)")
-st.write("Buscando o `browseId` diretamente do endpoint `/next`.")
+st.title("🎵 Extração Direta de Album ID")
+st.write("Acessando o endpoint `/next` de forma bruta (Raw JSON).")
 
 song_id = st.text_input("Digite o Song ID:", value="ikFFVfObwss")
 
-if st.button("Extrair", type="primary"):
+if st.button("Buscar no JSON Real", type="primary"):
     if song_id:
-        with st.spinner("Analisando resposta da API..."):
+        with st.spinner("Simulando requisição do player..."):
             try:
                 yt = YTMusic()
-                # O get_watch_playlist chama o /next internamente
-                data = yt.get_watch_playlist(videoId=song_id)
+                
+                # Fazendo a chamada manual para o endpoint 'next'
+                # Isso retorna o JSON exatamente como você vê no F12
+                body = {"videoId": song_id}
+                endpoint = "next"
+                response = yt._send_request(endpoint, body)
+                
+                # Navegando no JSON para encontrar o browseId do Álbum
+                # O caminho costuma ser: contents -> singleColumnMusicWatchNextResultsRenderer 
+                # -> tabbedRenderer -> watchNextTabbedResultsRenderer -> tabs...
                 
                 album_id = None
                 
-                # 1. Tenta extrair da estrutura de tracks (mapeamento padrão)
-                if 'tracks' in data and len(data['tracks']) > 0:
-                    album_id = data['tracks'][0].get('album', {}).get('id')
+                # Tentativa de busca recursiva simples para achar o MPREb_
+                def find_browse_id(obj):
+                    if isinstance(obj, dict):
+                        for k, v in obj.items():
+                            if k == "browseId" and isinstance(v, str) and v.startswith("MPREb_"):
+                                return v
+                            result = find_browse_id(v)
+                            if result: return result
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            result = find_browse_id(item)
+                            if result: return result
+                    return None
 
-                # 2. Se falhar, busca manualmente no 'lyrics' ou 'related' que residem no /next
-                # Muitas vezes o browseId está no objeto de navegação da faixa atual
-                if not album_id:
-                    # Tenta pegar dos metadados brutos que o ytmusicapi expõe as vezes em objetos aninhados
-                    # Se não encontrar, vamos vasculhar o dicionário básico
-                    st.info("Navegando no JSON bruto...")
+                album_id = find_browse_id(response)
 
                 if album_id:
-                    st.success(f"Sucesso! BrowseId encontrado:")
+                    st.success("BrowseId (Album ID) encontrado!")
                     st.code(album_id, language="text")
-                    st.markdown(f"**Link do Álbum:** [Acessar](https://music.youtube.com/browse/{album_id})")
+                    st.markdown(f"**Link:** [Ver no YT Music](https://music.youtube.com/browse/{album_id})")
                 else:
-                    st.error("O browseId não foi mapeado automaticamente.")
-                    st.write("Inspecionando estrutura completa para você:")
-                    st.json(data) # Mostra o JSON completo para acharmos a nova chave
-                    
+                    st.error("Não foi possível localizar 'MPREb_' no JSON retornado.")
+                    with st.expander("Inspecionar JSON completo (F12 style)"):
+                        st.json(response)
+                        
             except Exception as e:
                 st.error(f"Erro na requisição: {e}")
-    else:
-        st.warning("Insira um ID válido.")
